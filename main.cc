@@ -321,13 +321,15 @@ int main(int argc, char* argv[]) {
   // They define where the graph and input data is located, and what kind of
   // input the model expects. If you train your own model, or use something
   // other than inception_v3, then you'll need to update these.
-  string image = "tensorflow/examples/label_image/data/grace_hopper.jpg";
+  string image = "/root/mnt/shared_with_realm/data_tensorflow/grace_hopper.jpg";
   string graph =
-      "tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb";
+      "/root/mnt/shared_with_realm/data_tensorflow/inception_v3_2016_08_28_frozen.pb";
   string labels =
-      "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
+      "/root/mnt/shared_with_realm/data_tensorflow/imagenet_slim_labels.txt";
+  string sig_addr = "/root/mnt/shared_with_realm/signalling_tensorflow.txt";
   int32_t input_width = 299;
   int32_t input_height = 299;
+  int32_t num = 40;
   float input_mean = 0;
   float input_std = 255;
   string input_layer = "input";
@@ -338,6 +340,8 @@ int main(int argc, char* argv[]) {
       Flag("image", &image, "image to be processed"),
       Flag("graph", &graph, "graph to be executed"),
       Flag("labels", &labels, "name of file containing labels"),
+      Flag("signalling", &sig_addr, "Address of signalling.txt file to check"),
+      Flag("num", &num, "Number of input to be expected"),
       Flag("input_width", &input_width, "resize image to this width in pixels"),
       Flag("input_height", &input_height,
            "resize image to this height in pixels"),
@@ -365,7 +369,8 @@ int main(int argc, char* argv[]) {
 
   // First we load and initialize the model.
   std::unique_ptr<tensorflow::Session> session;
-  string graph_path = tensorflow::io::JoinPath(root_dir, graph);
+  //string graph_path = tensorflow::io::JoinPath(root_dir, graph);
+  string graph_path = graph;
   Status load_graph_status = LoadGraph(graph_path, &session);
   if (!load_graph_status.ok()) {
     LOG(ERROR) << load_graph_status;
@@ -375,47 +380,52 @@ int main(int argc, char* argv[]) {
   // Get the image from disk as a float array of numbers, resized and normalized
   // to the specifications the main graph expects.
   std::vector<Tensor> resized_tensors;
-  string image_path = tensorflow::io::JoinPath(root_dir, image);
-  Status read_tensor_status =
-      ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
-                              input_std, &resized_tensors);
-  if (!read_tensor_status.ok()) {
-    LOG(ERROR) << read_tensor_status;
-    return -1;
-  }
-  const Tensor& resized_tensor = resized_tensors[0];
+//  string image_path = tensorflow::io::JoinPath(root_dir, image);
+  for (int i = 1; i <= num; i++){
+   LOG(INFO) << "checkSystemStateAndGetFilename-------------------------------- ";
+   string image_path = checkSystemStateAndGetFilename(sig_addr);
+//   string image_path = image;
+   Status read_tensor_status =
+       ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
+                               input_std, &resized_tensors);
+   if (!read_tensor_status.ok()) {
+     LOG(ERROR) << read_tensor_status;
+     return -1;
+   }
+   const Tensor& resized_tensor = resized_tensors[0];
 
-  // Actually run the image through the model.
-  std::vector<Tensor> outputs;
-  Status run_status = session->Run({{input_layer, resized_tensor}},
-                                   {output_layer}, {}, &outputs);
-  if (!run_status.ok()) {
-    LOG(ERROR) << "Running model failed: " << run_status;
-    return -1;
-  }
+   // Actually run the image through the model.
+   std::vector<Tensor> outputs;
+   Status run_status = session->Run({{input_layer, resized_tensor}},
+                                    {output_layer}, {}, &outputs);
+   if (!run_status.ok()) {
+     LOG(ERROR) << "Running model failed: " << run_status;
+     return -1;
+   }
 
   // This is for automated testing to make sure we get the expected result with
   // the default settings. We know that label 653 (military uniform) should be
   // the top label for the Admiral Hopper image.
-  if (self_test) {
-    bool expected_matches;
-    Status check_status = CheckTopLabel(outputs, 653, &expected_matches);
-    if (!check_status.ok()) {
-      LOG(ERROR) << "Running check failed: " << check_status;
-      return -1;
-    }
-    if (!expected_matches) {
-      LOG(ERROR) << "Self-test failed!";
-      return -1;
-    }
-  }
+   if (self_test) {
+     bool expected_matches;
+     Status check_status = CheckTopLabel(outputs, 653, &expected_matches);
+     if (!check_status.ok()) {
+       LOG(ERROR) << "Running check failed: " << check_status;
+       return -1;
+     }
+     if (!expected_matches) {
+       LOG(ERROR) << "Self-test failed!";
+       return -1;
+     }
+   }
 
   // Do something interesting with the results we've generated.
-  Status print_status = PrintTopLabels(outputs, labels);
-  if (!print_status.ok()) {
-    LOG(ERROR) << "Running print failed: " << print_status;
-    return -1;
+   Status print_status = PrintTopLabels(outputs, labels);
+   if (!print_status.ok()) {
+     LOG(ERROR) << "Running print failed: " << print_status;
+     return -1;
+   }
+   updateSystemStateToProcessed(sig_addr);
   }
-
-  return 0;
+   return 0;
 }
