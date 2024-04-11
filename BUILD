@@ -15,6 +15,7 @@ exports_files(["data/grace_hopper.jpg"])
 tf_cc_binary(
     name = "label_image",
     srcs = [
+	"VM_signalling.cc",
         "main.cc",
     ],
     linkopts = select({
