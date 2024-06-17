@@ -29,10 +29,11 @@ Once extracted, see the labels file in the data directory for the possible
 classifications, which are the 1,000 categories used in the Imagenet
 competition.
 
-To build it, run this command:
-
-```bash
-$ bazel build tensorflow/examples/label_image/...
+Build Command from the main TensorFlow dorectory
+```
+export TF_PYTHON_VERSION=3.11
+bazel build -c opt --config=elinux_aarch64 tensorflow/examples/label_image/label_image --jobs=5 \
+--local_cpu_resources=8 --verbose_failures
 ```
 
 That should build a binary executable that you can then run like this:
@@ -64,4 +65,5 @@ $ bazel-bin/tensorflow/examples/label_image/label_image --image=my_image.png
 
 For a more detailed look at this code, you can check out the C++ section of the
 [Inception tutorial](https://github.com/tensorflow/docs/blob/master/site/en/r1/tutorials/images/image_recognition.md).
+
 
