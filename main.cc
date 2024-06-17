@@ -65,6 +65,8 @@ limitations under the License.
 #include <fstream>
 #include <thread>
 #include <chrono>
+#include <iostream>
+#include "benchmark.h"
 
 std::string checkSystemStateAndGetFilename(std::string filePath) {
     while (true) {
@@ -158,7 +160,7 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
 Status ReadTensorFromImageFile(const string& file_name, const int input_height,
                                const int input_width, const float input_mean,
                                const float input_std,
-                               std::vector<Tensor>* out_tensors) {
+                               std::vector<Tensor>* out_tensors, const int trace) {
   auto root = tensorflow::Scope::NewRootScope();
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
@@ -169,6 +171,13 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   Tensor input(tensorflow::DT_STRING, tensorflow::TensorShape());
   TF_RETURN_IF_ERROR(
       ReadEntireFile(tensorflow::Env::Default(), file_name, &input));
+
+  if (trace == 1){
+     CCA_TRACE_START;
+     CCA_MARKER_READ_INPUT_STOP();
+     CCA_MARKER_NEW_INFERENCE_START();
+     CCA_TRACE_STOP;
+  }
 
   // use a placeholder to read input data
   auto file_reader =
@@ -321,15 +330,16 @@ int main(int argc, char* argv[]) {
   // They define where the graph and input data is located, and what kind of
   // input the model expects. If you train your own model, or use something
   // other than inception_v3, then you'll need to update these.
-  string image = "/root/mnt/shared_with_realm/data_tensorflow/grace_hopper.jpg";
+  string image = "/root/data_tensorflow/grace_hopper.jpg";
   string graph =
-      "/root/mnt/shared_with_realm/data_tensorflow/inception_v3_2016_08_28_frozen.pb";
+      "/root/data_tensorflow/inception_v3_2016_08_28_frozen.pb";
   string labels =
-      "/root/mnt/shared_with_realm/data_tensorflow/imagenet_slim_labels.txt";
-  string sig_addr = "/root/mnt/shared_with_realm/signalling_tensorflow.txt";
+      "/root/data_tensorflow/imagenet_slim_labels.txt";
+  string sig_addr;
   int32_t input_width = 299;
   int32_t input_height = 299;
-  int32_t num = 40;
+  int32_t num = 1;
+  int32_t trace = 0;
   float input_mean = 0;
   float input_std = 255;
   string input_layer = "input";
@@ -342,6 +352,7 @@ int main(int argc, char* argv[]) {
       Flag("labels", &labels, "name of file containing labels"),
       Flag("signalling", &sig_addr, "Address of signalling.txt file to check"),
       Flag("num", &num, "Number of input to be expected"),
+      Flag("trace", &trace, "Trace method"),
       Flag("input_width", &input_width, "resize image to this width in pixels"),
       Flag("input_height", &input_height,
            "resize image to this height in pixels"),
@@ -358,6 +369,13 @@ int main(int argc, char* argv[]) {
   if (!parse_result) {
     LOG(ERROR) << usage;
     return -1;
+  }
+ 
+  if (trace == 1){
+     CCA_TRACE_START;
+     CCA_MARKER_START();
+     CCA_MARKER_INFERENCE_INITIALISATION_START();
+     CCA_TRACE_STOP;
   }
 
   // We need to call this to set up global state for TensorFlow.
@@ -380,14 +398,36 @@ int main(int argc, char* argv[]) {
   // Get the image from disk as a float array of numbers, resized and normalized
   // to the specifications the main graph expects.
   std::vector<Tensor> resized_tensors;
-//  string image_path = tensorflow::io::JoinPath(root_dir, image);
+  string image_path;
+  if (trace == 1){
+     CCA_TRACE_START;
+     CCA_MARKER_INFERENCE_INITIALISATION_END();
+     CCA_TRACE_STOP;
+  }
   for (int i = 1; i <= num; i++){
-   LOG(INFO) << "checkSystemStateAndGetFilename-------------------------------- ";
-   string image_path = checkSystemStateAndGetFilename(sig_addr);
-//   string image_path = image;
-   Status read_tensor_status =
+  if (trace == 1){
+     CCA_TRACE_START;
+     CCA_MARKER_READ_INPUT_ADDR_START();
+     CCA_TRACE_STOP;
+  }
+
+   if (!sig_addr.empty()){
+     LOG(INFO) << "checkSystemStateAndGetFilename-------------------------------- ";
+     image_path = checkSystemStateAndGetFilename(sig_addr);
+   }
+   else {
+     image_path = image;
+   }
+   if (trace == 1){
+      CCA_TRACE_START;
+      CCA_MARKER_READ_INPUT_ADDR_STOP();
+      CCA_MARKER_READ_INPUT_START();
+      CCA_TRACE_STOP;
+   }
+
+  Status read_tensor_status =
        ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
-                               input_std, &resized_tensors);
+                               input_std, &resized_tensors, trace);
    if (!read_tensor_status.ok()) {
      LOG(ERROR) << read_tensor_status;
      return -1;
@@ -418,6 +458,12 @@ int main(int argc, char* argv[]) {
        return -1;
      }
    }
+  if (trace == 1){
+     CCA_TRACE_START;
+     CCA_MARKER_NEW_INFERENCE_STOP();
+     CCA_MARKER_WRITE_OUTPUT_START();
+     CCA_TRACE_STOP;
+  }
 
   // Do something interesting with the results we've generated.
    Status print_status = PrintTopLabels(outputs, labels);
@@ -425,7 +471,22 @@ int main(int argc, char* argv[]) {
      LOG(ERROR) << "Running print failed: " << print_status;
      return -1;
    }
-   updateSystemStateToProcessed(sig_addr);
+   if (trace == 1){
+      CCA_TRACE_START;
+      CCA_MARKER_WRITE_OUTPUT_STOP();
+      CCA_MARKER_UPDATE_STATE_START();
+      CCA_TRACE_STOP;
+   }
+
+   if (!sig_addr.empty()){
+     updateSystemStateToProcessed(sig_addr);
+   }
+  if (trace == 1){
+     CCA_TRACE_START;
+     CCA_MARKER_UPDATE_STATE_STOP();
+     CCA_TRACE_STOP;
   }
+
+   }
    return 0;
 }

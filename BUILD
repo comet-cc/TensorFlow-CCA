@@ -12,6 +12,12 @@ package(
 
 exports_files(["data/grace_hopper.jpg"])
 
+cc_library(
+    name = "benchmark_lib",
+    hdrs = ["benchmark.h"],
+    visibility = ["//visibility:public"],  
+)
+
 tf_cc_binary(
     name = "label_image",
     srcs = [
@@ -48,6 +54,7 @@ tf_cc_binary(
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
+	    "//tensorflow/examples/label_image:benchmark_lib",
         ],
     }),
 )
