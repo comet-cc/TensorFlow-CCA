@@ -68,40 +68,6 @@ limitations under the License.
 #include <iostream>
 #include "benchmark.h"
 
-std::string checkSystemStateAndGetFilename(std::string filePath) {
-    while (true) {
-        std::ifstream file(filePath);
-        std::string line;
-        std::string state;
-        std::string fileName;
-
-        while (getline(file, line)) {
-            if (line.find("systemState:") != std::string::npos) {
-                state = line.substr(line.find(":") + 2);
-            } else if (line.find("fileName:") != std::string::npos) {
-                fileName = line.substr(line.find(":") + 2);
-            }
-        }
-
-        if (state == "query") {
-            std::cout << "System state is 'query'. Filename: " << fileName << std::endl;
-            return fileName;
-        } else {
-            std::cout << "Waiting for system state to become 'query'..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(5)); // Check every 5 seconds
-        }
-    }
-}
-
-void updateSystemStateToProcessed(std::string filePath) {
-    std::ofstream file(filePath, std::ios::out | std::ios::trunc); // Overwrite the file
-    if (file.is_open()) {
-        file << "systemState: processed\n";
-    } else {
-        std::cerr << "Unable to open file for writing." << std::endl;
-    }
-}
-
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
 using tensorflow::int32;
@@ -175,7 +141,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   if (trace == 1){
      CCA_TRACE_START;
      CCA_MARKER_READ_INPUT_STOP();
-     CCA_MARKER_NEW_INFERENCE_START();
+     CCA_MARKER_INFERENCE_START();
      CCA_TRACE_STOP;
   }
 
@@ -335,10 +301,8 @@ int main(int argc, char* argv[]) {
       "/root/data_tensorflow/inception_v3_2016_08_28_frozen.pb";
   string labels =
       "/root/data_tensorflow/imagenet_slim_labels.txt";
-  string sig_addr;
   int32_t input_width = 299;
   int32_t input_height = 299;
-  int32_t num = 1;
   int32_t trace = 0;
   float input_mean = 0;
   float input_std = 255;
@@ -350,8 +314,6 @@ int main(int argc, char* argv[]) {
       Flag("image", &image, "image to be processed"),
       Flag("graph", &graph, "graph to be executed"),
       Flag("labels", &labels, "name of file containing labels"),
-      Flag("signalling", &sig_addr, "Address of signalling.txt file to check"),
-      Flag("num", &num, "Number of input to be expected"),
       Flag("trace", &trace, "Trace method"),
       Flag("input_width", &input_width, "resize image to this width in pixels"),
       Flag("input_height", &input_height,
@@ -404,23 +366,9 @@ int main(int argc, char* argv[]) {
      CCA_MARKER_INFERENCE_INITIALISATION_END();
      CCA_TRACE_STOP;
   }
-  for (int i = 1; i <= num; i++){
-  if (trace == 1){
-     CCA_TRACE_START;
-     CCA_MARKER_READ_INPUT_ADDR_START();
-     CCA_TRACE_STOP;
-  }
-
-   if (!sig_addr.empty()){
-     LOG(INFO) << "checkSystemStateAndGetFilename-------------------------------- ";
-     image_path = checkSystemStateAndGetFilename(sig_addr);
-   }
-   else {
-     image_path = image;
-   }
+    image_path = image;
    if (trace == 1){
       CCA_TRACE_START;
-      CCA_MARKER_READ_INPUT_ADDR_STOP();
       CCA_MARKER_READ_INPUT_START();
       CCA_TRACE_STOP;
    }
@@ -460,7 +408,7 @@ int main(int argc, char* argv[]) {
    }
   if (trace == 1){
      CCA_TRACE_START;
-     CCA_MARKER_NEW_INFERENCE_STOP();
+     CCA_MARKER_INFERENCE_STOP();
      CCA_MARKER_WRITE_OUTPUT_START();
      CCA_TRACE_STOP;
   }
@@ -474,19 +422,8 @@ int main(int argc, char* argv[]) {
    if (trace == 1){
       CCA_TRACE_START;
       CCA_MARKER_WRITE_OUTPUT_STOP();
-      CCA_MARKER_UPDATE_STATE_START();
       CCA_TRACE_STOP;
    }
 
-   if (!sig_addr.empty()){
-     updateSystemStateToProcessed(sig_addr);
-   }
-  if (trace == 1){
-     CCA_TRACE_START;
-     CCA_MARKER_UPDATE_STATE_STOP();
-     CCA_TRACE_STOP;
-  }
-
-   }
    return 0;
 }
